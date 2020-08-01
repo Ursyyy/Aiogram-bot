@@ -1,3 +1,7 @@
+#
+#pip3/pip install aiogram mysql.connector gspread oauth2client telethon
+#
+
 from aiogram import executor
 import telethon
 from aiogram import types
@@ -8,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functions.sql import *
 from bot import bot, dp
 from functions.work_with_google import WriteToSQL
+
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
@@ -126,10 +131,13 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		check_code = AvailabilityRefCode(event, username)
 		if check_code == -1:
 			code = InsertRefCode(event, username)
+			eventInfo = GetEventInfo(event)
+			await update_event_info(callback_query.message.message_id, callback_query.message.chat.id, eventInfo, username)
 			if code != -1: await bot.send_message(callback_query.from_user.id, text=f"Ваш код: {code}")
 			else: await bot.send_message(callback_query.from_user.id, text=f"Что-то пошло не так")
 		else:
 			await bot.send_message(callback_query.from_user.id, f"У вас уже есть промокод: {check_code}")
+	
 	if callback_query.data.startswith('forward_from'):
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		forward_from, event, user_code = callback_query.data.split('=')
@@ -188,6 +196,19 @@ async def send_event_info_from_callback(chatID: int, eventInfo:list, username:st
 		keyboard.add(types.InlineKeyboardButton("Поделись и заработай", callback_data=f"forward_from_telegram={eventInfo[0]}={check_code}"))
 	keyboard.add(types.InlineKeyboardButton("Мой кошелек", callback_data=f"my_purse={username}"))
 	await bot.send_photo(chat_id= chatID ,photo=eventInfo[1], caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", reply_markup=keyboard, parse_mode="HTML")
+
+async def update_event_info(messageId:int, chatID:int, eventInfo:list, username:str):
+	check_code = AvailabilityRefCode(eventInfo[0], username)
+	keyboard = types.InlineKeyboardMarkup()
+	if check_code == -1:
+		keyboard.add(types.InlineKeyboardButton("Получи код и заработай", callback_data=f"generate_from_event={eventInfo[0]}"))
+	else: 
+		keyboard.add(types.InlineKeyboardButton("Используй промокод", callback_data=f"activale_promo_event={eventInfo[0]}={username}"))
+		keyboard.add(types.InlineKeyboardButton("Поделись и заработай", callback_data=f"forward_from_telegram={eventInfo[0]}={check_code}"))
+	keyboard.add(types.InlineKeyboardButton("Мой кошелек", callback_data=f"my_purse={username}"))
+	media_file =dumps({"type":"photo","media": eventInfo[1]})
+	await bot.edit_message_media(media=media_file, chat_id=chatID, message_id=messageId)
+	await bot.edit_message_caption(chat_id=chatID ,caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", message_id=messageId, reply_markup=keyboard,  parse_mode="HTML")
 
 
 if __name__ == "__main__":
