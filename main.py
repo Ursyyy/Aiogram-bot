@@ -15,20 +15,25 @@ async def cmd_start(message: types.Message):
 	splitMsg = message.text.split()
 	if len(splitMsg) == 2:
 		backlink = False
-		if splitMsg[1].endswith("*backlink"): 
-			ref_code = int(splitMsg[1].split('*')[0])
-			backlink = True
-		else:
-			ref_code = int(splitMsg[1])
 		try:
+			if splitMsg[1].endswith("back"): 
+				ref_code = int(splitMsg[1][:-4])
+				backlink = True
+			else:
+				ref_code = int(splitMsg[1])
 			await message.answer(InsertUserFromRefCode(message.from_user.username, ref_code, backlink))
 		except ValueError:
 			await message.answer("Что-то пошло не так, убедитесь в коректности реферального кода")
 	elif len(splitMsg) == 1:
-		await send_promocodes(message)
-		await send_active_order(message)
+		await message.answer("Добро пожаловать, тут вы найдете для себя приятные предложения и возможность заработать")
+		await category_list(message)
 	else:
 		await message.answer("Smth wrong!")
+
+@dp.message_handler(commands=['mypromocodes'])
+async def cmd_show_promocodes(message: types.Message):
+	await send_promocodes(message)
+	await send_active_order(message)
 
 async def send_promocodes(message: types.Message):
 	promocode_list = PromocodesList(message.from_user.username)
@@ -88,7 +93,6 @@ async def events_list(message: types.Message, category:str = "all"):
 	slide_keyboard.row(key2, key3, key1)
 	await message.answer(text="Переход между страницами", reply_markup=slide_keyboard)
 
-
 @dp.callback_query_handler(lambda c: c.data)
 async def process_callback_btn(callback_query: types.CallbackQuery):
 	if callback_query.data.startswith('event_list'):
@@ -105,32 +109,35 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		text, eventID, username = callback_query.data.lower().split('=')
 		if not CheckIsActive(eventID, username):
-			orderName = eventID+username.title()+"Order"
+			orderName = str(SelectRefCode(eventID, username))+"Order"
 			if CreateOrder(eventID, username, orderName):
 				await bot.send_message(callback_query.from_user.id,text=f"Создано событие {orderName}. Подождите, скоро с вами свяжется представитель заведения")
+			else: await bot.send_message(callback_query.from_user.id,text=f"Возникла ошибка, событие не создано")
 		else: 
 			code = AvailabilityRefCode(eventID, username)
-			share_keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Поделиться", callback_data=f"forward_from_telegram={eventID}={code}"))
+			share_keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Стать реферером", callback_data=f"forward_from_telegram={eventID}={code}"))
+			share_keyboard.add(types.InlineKeyboardButton(text="Найти реферера", callback_data=f"forward_from_backlink={eventID}={code}"))
 			await bot.send_message(callback_query.from_user.id ,text="Этот промокод у вас пока только для заработка. Для того, чтобы вы могли его использовать, кто-то другой должен заработать за вас. Пригласите друга, дайте ему заработать. А вы получите право и сами использовать этот промокод", reply_markup=share_keyboard)
 
 	if callback_query.data.startswith('generate_from'):
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		generate_from, event = callback_query.data.split('=')
 		username = callback_query.from_user.username
-		if generate_from == 'generate_from_event':
-			check_code = AvailabilityRefCode(event, username)
-			if check_code == -1:
-				code = InsertRefCode(event, username)
-				#eventInfo = GetEventInfo(event)
-				#await update_event_info(callback_query.message.message_id, callback_query.message.chat.id, eventInfo, username)
-				await bot.send_message(callback_query.from_user.id, text=f"Ваш код: {code}")
-			else:
-				await bot.send_message(callback_query.from_user.id, f"У вас уже есть промокод: {check_code}")
+		check_code = AvailabilityRefCode(event, username)
+		if check_code == -1:
+			code = InsertRefCode(event, username)
+			if code != -1: await bot.send_message(callback_query.from_user.id, text=f"Ваш код: {code}")
+			else: await bot.send_message(callback_query.from_user.id, text=f"Что-то пошло не так")
+		else:
+			await bot.send_message(callback_query.from_user.id, f"У вас уже есть промокод: {check_code}")
 	if callback_query.data.startswith('forward_from'):
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		forward_from, event, user_code = callback_query.data.split('=')
 		if forward_from == 'forward_from_telegram':
 			link = f"t.me/Ursyyy_bot?start={user_code}"#await forward_link_to_telegram(user_code)
+			await bot.send_message(callback_query.from_user.id, f"Вот реферальная ссылка, поделитесь ею с другом, чтобы вы могли использовать свой промокод\n\n{link}")
+		if forward_from == "forward_from_backlink":
+			link = f"t.me/Ursyyy_bot?start={user_code}back"
 			await bot.send_message(callback_query.from_user.id, f"Вот реферальная ссылка, поделитесь ею с другом, чтобы вы могли использовать свой промокод\n\n{link}")
 
 	if callback_query.data.startswith('my_purse'):
