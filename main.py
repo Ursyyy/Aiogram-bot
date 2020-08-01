@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 from functions.sql import *
 from bot import bot, dp
-from functions.generate_code import *
 from functions.work_with_google import WriteToSQL
 
 @dp.message_handler(commands=['start'])
@@ -15,26 +14,41 @@ async def cmd_start(message: types.Message):
 	await message.answer("<---   --->")
 	splitMsg = message.text.split()
 	if len(splitMsg) == 2:
-		try:
+		backlink = False
+		if splitMsg[1].endswith("*backlink"): 
+			ref_code = int(splitMsg[1].split('*')[0])
+			backlink = True
+		else:
 			ref_code = int(splitMsg[1])
-			await message.answer(InsertUserFromRefCode(message.from_user.username, ref_code))
+		try:
+			await message.answer(InsertUserFromRefCode(message.from_user.username, ref_code, backlink))
 		except ValueError:
 			await message.answer("Что-то пошло не так, убедитесь в коректности реферального кода")
 	elif len(splitMsg) == 1:
-		await cmd_events(message)
+		await send_promocodes(message)
+		await send_active_order(message)
 	else:
 		await message.answer("Smth wrong!")
 
 async def send_promocodes(message: types.Message):
 	promocode_list = PromocodesList(message.from_user.username)
-	message_text = ""
-	if len(promocode_list) > 0:
+	if promocode_list != []:
+		message_text = "Ваши промокода:\n"
 		for data in promocode_list:
 			message_text += data[1] + " -- " + str(data[0]) +'\n'
 		await message.answer(message_text)
 	else: 
 		keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Найти промокод", callback_data="event_list"))
 		await message.answer("У вас сейчас нет промокодов", reply_markup=keyboard)
+
+async def send_active_order(message:types.Message):
+	active_orders = ActiveOrders(message.chat.username)
+	if active_orders != []:
+		await message.answer("<---   --->")
+		answer = "Активные заказы:\n"
+		for order in active_orders:
+			answer += f"{order[0]} -- {order[1]}\n"
+		await message.answer(text=answer)
 
 @dp.message_handler(commands=['updatedb'])
 async def Update_database(message: types.Message):
@@ -91,7 +105,9 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		text, eventID, username = callback_query.data.lower().split('=')
 		if not CheckIsActive(eventID, username):
-			await bot.send_message(callback_query.from_user.id,text="Будет создано событие")
+			orderName = eventID+username.title()+"Order"
+			if CreateOrder(eventID, username, orderName):
+				await bot.send_message(callback_query.from_user.id,text=f"Создано событие {orderName}. Подождите, скоро с вами свяжется представитель заведения")
 		else: 
 			code = AvailabilityRefCode(eventID, username)
 			share_keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Поделиться", callback_data=f"forward_from_telegram={eventID}={code}"))

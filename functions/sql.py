@@ -69,7 +69,7 @@ def AvailabilityRefCode(eventId: int, userTelUsername: int) -> int:
 		return -1
 	return result[0][0]
 
-def InsertUserFromRefCode(userTelUsername: str, userRefCode: int) -> str:
+def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool) -> str:
 	cursor.execute(f"SELECT * FROM refcodes WHERE userrefcode = {userRefCode}")
 	parent_user = cursor.fetchone()
 	if parent_user is None:
@@ -87,7 +87,8 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int) -> str:
 	cursor.execute(f"SELECT recommendedFrom FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userTelUsername, parent_user[0]))
 	user = cursor.fetchone()
 	if user is None:
-		refCode = InsertRefCode(parent_user[0], userTelUsername, shared_from=parent_user[1])
+		if backlink: refCode = InsertRefCode(parent_user[0], userTelUsername, shared_from=parent_user[1], refcodeStatus='active')
+		else: refCode = InsertRefCode(parent_user[0], userTelUsername)
 		if refCode == -1:
 			return "Не удалось создать промокод"
 		mydb.commit()
@@ -98,7 +99,15 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int) -> str:
 			return "Что-то пошло не так, убедитесь в коректности реферального кода"
 		return "Вы успешно зарегестрировали промокод"
 	return "У вас уже есть рекомендатель по этому событию"
-	
+
+def CreateOrder(eventID:int, userTelUsername:str, orderName:str) -> bool:
+	try:
+		cursor.execute("UPDATE refcodes SET orderStatus = 'active', orderName = %s WHERE userTelUsername = %s AND eventID", (orderName, userTelUsername, evetID))
+		mydb.commit()
+		return True
+	except:
+		return False
+
 def PromocodesList(userTelUsername: str) -> list:
 	cursor.execute(f"SELECT eventID, userrefcode FROM refcodes WHERE userTelUsername = %s", (userTelUsername,))
 	all_event_by_username = cursor.fetchall()
@@ -108,15 +117,24 @@ def PromocodesList(userTelUsername: str) -> list:
 		event_title = cursor.fetchone()[0]
 		result_list.append((item[1], event_title))
 	return result_list
-	
-def InsertRefCode(eventId: int, userTelUsername: str, shared_from:int = None, userSegments:str = "") -> int:
+
+def ActiveOrders(userTelUsername:str) -> list:
+	cursor.execute("SELECT eventID, orderName FROM refcodes WHERE orderStatus = 'active' AND userTelUsername = %s",(userTelUsername, ))
+	orders = cursor.fetchall()
+	result = []
+	for order in orders:
+		cursor.execute("SELECT Title FROM events WHERE eventID = %s", (order[0], ))
+		result.append((cursor.fetchone()[0], order[1]))
+	return result
+
+def InsertRefCode(eventId: int, userTelUsername: str, refcodeStatus:str = 'inactive', shared_from:int = None, userSegments:str = "user", MaxRefTotal:int = 0, MaxRefPerDay:int = 0 ) -> int:
 	max_code = MaxRefCode()
 	if max_code == 0: refCode = randint(200,500)
 	else: refCode = max_code + randint(1, 10)
 	try:
 		cursor.execute(f"""INSERT INTO refcodes (eventID, userTelUsername, userrefcode, refcodeStatus, userSegments,
-						recommendedFrom, MaxRefTotal, MaxRefPerDay, eventLen, orderName, orderStatus)
-						VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s )""", (eventId, userTelUsername, refCode, 'inactive', userSegments, shared_from, 0, 0, 10, None, None))
+						recommendedFrom, MaxRefTotal, MaxRefPerDay, orderName, orderStatus)
+						VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s )""", (eventId, userTelUsername, refCode, refcodeStatus , userSegments, shared_from, MaxRefTotal, MaxRefPerDay, None, None))
 		mydb.commit()
 		logs = Thread(target=WriteLogs, args=(userTelUsername,refCode))
 		logs.start()
@@ -137,4 +155,5 @@ def WriteLogs(userName:str, refCode:int) -> None:
 	cursor.execute("SELECT Title FROM events WHERE eventID = %s", (eventID,))
 	eventTitle = cursor.fetchone()[0]
 	work_with_google.WriteRefCodesToSheets(refCode, userName, eventID, eventTitle, user_info[0], user_info[1], refcodePossibleToUse=ref_user[1], referalUsername=ref_user[0], referalFirstName=ref_user_info[1], refLastName=ref_user_info[2])
+
 
