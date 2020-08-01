@@ -3,6 +3,10 @@ import mysql.connector
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 
+#
+#time = 6
+#
+
 connector = mysql.connector.connect(
 	host="host",
 	user="user",
@@ -104,13 +108,12 @@ def WriteToSQL() -> str:
 
 		return f"Таблицы были обновлены"
 	except mysql.connector.Error as error:
-		connector.rollback()
 		return f"Ошибка: {error}. Таблицы не обновлены"
 
-def WriteRefCodesToSheets(refcode:int ,username:str, eventId:int, eventTitle:str, userFirstName:str ="", userLastName:str ="", refcodePossibleToUse:str ="enable",	referalId:int = "", referalUsername:str = "", referalFirstName:str = "", refLastName:str =""):
+def WriteRefCodesToSheets(refcode:int ,username:str, eventId:int, eventTitle:str, userFirstName:str ="", userLastName:str ="", refcodePossibleToUse:str ="disable",	referalId:int = "", referalUsername:str = "", orderStatus:str = "", orderName:str =""):
 	date, time = str(datetime.today()).split()
 	time = time[0:time.find('.')]
-	insertData = [date, time, refcode, username, eventId, eventTitle, userFirstName, userLastName, refcodePossibleToUse,	referalId,	referalUsername, referalFirstName,	refLastName]
+	insertData = [date, time, refcode, username, eventId, eventTitle, userFirstName, userLastName, refcodePossibleToUse,	referalId,	referalUsername, orderStatus,	orderName]
 	sheet = client.open("logs")
 	
 	sheetTitle = 'ref-'+ date[:7]
@@ -121,14 +124,14 @@ def WriteRefCodesToSheets(refcode:int ,username:str, eventId:int, eventTitle:str
 		worksheet.add_rows(1)
 	except:
 		Title = ["Date", "Time", "refcode", "username",	"eventId", "eventTitle", "userFirstName", "userLastName", 
-			"refcodePossibleToUse", "referal Id",	"referal username",	"referal first name", "ref last name"]
+			"refcodePossibleToUse", "referal Id",	"referal username",	"orderStatus", "orderName"]
 		worksheet = sheet.add_worksheet(sheetTitle, rows="100", cols="14")
 		worksheet = sheet.worksheet(sheetTitle)
 		worksheet.insert_row(Title, 1)
 		worksheet.insert_row(insertData,2)
 		worksheet.add_rows(1)
 	
-def WriteErrorToSheets(text:str =""):
+async def WriteErrorToSheets(text:str =""):
 	date, time = str(datetime.today()).split()
 	time = time[0:time.find('.')]
 	insertData = [date, time, text]

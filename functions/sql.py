@@ -4,6 +4,10 @@ from threading import Thread
 from . import work_with_google
 from . import get_telegram_user_info
 
+#
+#time = 8.5
+#
+
 mydb = mysql.connector.connect(
 	host="host",
 	user="user",

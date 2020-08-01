@@ -13,6 +13,9 @@ from functions.sql import *
 from bot import bot, dp
 from functions.work_with_google import WriteToSQL
 
+#
+#time = 11
+#
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):

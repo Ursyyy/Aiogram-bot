@@ -3,6 +3,10 @@ from telethon.tl.functions.users import GetFullUserRequest
 import asyncio
 import telethon.sync
 
+#
+#time = .5
+#
+
 def GetUserInfo(username:str)->list:
     api_id = 0
     api_hash = "LoL"
