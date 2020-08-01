@@ -3,7 +3,7 @@ from random import randint
 from threading import Thread
 from . import work_with_google
 from . import get_telegram_user_info
-
+from time import sleep
 #
 #time = 8.5
 #
@@ -66,6 +66,10 @@ def MaxRefCode() -> int:
 		return 0
 	return codes[0][0]
 
+def GetEventInfo(eventID:int) -> tuple:
+	cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventID = %s", (eventID, ))
+	return cursor.fetchone()
+
 def SelectRefCode(eventID: int, userTelUsername: str) -> int:
 	cursor.execute("SELECT userrefcode FROM refcodes WHERE eventID = %s AND userTelUsername = %s", (eventID, userTelUsername))
 	return cursor.fetchone()[0]
@@ -95,17 +99,19 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool
 	cursor.execute(f"SELECT recommendedFrom FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userTelUsername, parent_user[0]))
 	user = cursor.fetchone()
 	if user is None:
-		if backlink: refCode = InsertRefCode(parent_user[0], userTelUsername, shared_from=parent_user[1], refcodeStatus='active', MaxRefPerDay=1, MaxRefTotal=1)
-		else: refCode = InsertRefCode(parent_user[0], userTelUsername)
+		if backlink: refCode = InsertRefCode(parent_user[0], userTelUsername, shared_from=parent_user[1], refcodeStatus='active', MaxRefPerDay=1, MaxRefTotal=1, write=False)
+		else: refCode = InsertRefCode(parent_user[0], userTelUsername, write=False)
 		if refCode == -1:
 			return "Не удалось создать промокод"
 		try:
 			command = f"UPDATE refcodes SET MaxRefTotal = {parent_user[6] + 1} , MaxRefPerDay = {parent_user[7] + 1}, refcodeStatus = 'active', recommendedFrom = '{userTelUsername}' WHERE userrefcode = { parent_user[2]}"
 			cursor.execute(command)
+			mydb.commit()
+			write = Thread(target=WriteLogs, args=[(parent_user[1], parent_user[0]), (userTelUsername, parent_user[0])])
+			write.start()
 		except mysql.connector.Error as error:
-			print(error)
 			return "Что-то пошло не так, убедитесь в коректности реферального кода"
-		mydb.commit()
+		
 		return f"Вы успешно зарегестрировали промокод\nВаш промокод {refCode}"
 	return "У вас уже есть рекомендатель по этому событию"
 
@@ -138,7 +144,7 @@ def ActiveOrders(userTelUsername:str) -> list:
 		result.append((cursor.fetchone()[0], order[1]))
 	return result
 
-def InsertRefCode(eventId: int, userTelUsername: str, refcodeStatus:str = 'inactive', shared_from:int = None, userSegments:str = "user", MaxRefTotal:int = 0, MaxRefPerDay:int = 0 ) -> int:
+def InsertRefCode(eventId: int, userTelUsername: str, refcodeStatus:str = 'inactive', shared_from:int = None, userSegments:str = "user", MaxRefTotal:int = 0, MaxRefPerDay:int = 0, write:bool = True ) -> int:
 	max_code = MaxRefCode()
 	if max_code == 0: refCode = randint(200,500)
 	else: refCode = max_code + randint(1, 10)
@@ -147,22 +153,24 @@ def InsertRefCode(eventId: int, userTelUsername: str, refcodeStatus:str = 'inact
 						recommendedFrom, MaxRefTotal, MaxRefPerDay, orderName, orderStatus)
 						VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s )""", (eventId, userTelUsername, refCode, refcodeStatus , userSegments, shared_from, MaxRefTotal, MaxRefPerDay, None, None))
 		mydb.commit()
-		logs = Thread(target=WriteLogs, args=(userTelUsername,eventId))
-		logs.start()
+		if write:
+			logs = Thread(target=WriteLogs, args=([(userTelUsername,eventId)]))
+			logs.start()
 		return refCode
 	except:
 	   return -1
 
-def WriteLogs(userName:str, eventID:int) -> None:
-	import time
-	time.sleep(0.5)
-	user_info = ['', '']
-
-	cursor.execute("SELECT recommendedFrom, refcodeStatus, orderStatus, orderName FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userName, eventID,))
-	ref_user = cursor.fetchone()
-	cursor.execute("SELECT userrefcode FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userName, eventID,))
-	refCode = cursor.fetchone()[0]
-	cursor.execute("SELECT Title FROM events WHERE eventID = %s", (eventID,))
-	eventTitle = cursor.fetchone()[0]
-	work_with_google.WriteRefCodesToSheets(refCode, userName, eventID, eventTitle, user_info[0], user_info[1], refcodePossibleToUse=ref_user[1], referalUsername=ref_user[0], orderStatus=ref_user[2], orderName=ref_user[3])
+def WriteLogs(*args) -> None:
+	sleep(1)
+	for item in args:
+		userName:str = item[0]
+		eventID:int = item[1]
+		user_info = ['', '']
+		cursor.execute("SELECT recommendedFrom, refcodeStatus, orderStatus, orderName FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userName, eventID,))
+		ref_user = cursor.fetchone()
+		cursor.execute("SELECT userrefcode FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userName, eventID,))
+		refCode = cursor.fetchone()[0]
+		cursor.execute("SELECT Title FROM events WHERE eventID = %s", (eventID,))
+		eventTitle = cursor.fetchone()[0]
+		work_with_google.WriteRefCodesToSheets(refCode, userName, eventID, eventTitle, user_info[0], user_info[1], refcodePossibleToUse=ref_user[1], referalUsername=ref_user[0], orderStatus=ref_user[2], orderName=ref_user[3])
 
