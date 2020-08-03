@@ -16,12 +16,9 @@ mydb = mysql.connector.connect(
 )
 
 HOW_MANY_SCROLLS = 10
+LANG = 'ru'
 
-cursor = mydb.cursor(buffered=True)
-
-def EventList() -> list:
-	cursor.execute("SELECT eventID, Title FROM events")
-	return cursor.fetchall()
+cursor = mydb.cursor(buffered=True) 
 
 def Categories() -> list:
 	cursor.execute("SELECT categoryName FROM categories")

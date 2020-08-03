@@ -119,8 +119,8 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		if not CheckIsActive(eventID, username):
 			orderName = str(SelectRefCode(eventID, username))+"Order"
 			if CreateOrder(eventID, username, orderName):
-				await bot.send_message(callback_query.from_user.id,text=f"Создано событие {orderName}. Подождите, скоро с вами свяжется представитель заведения")
-			else: await bot.send_message(callback_query.from_user.id,text=f"Возникла ошибка, событие не создано")
+				await bot.send_message(callback_query.from_user.id,text=f"Ваш заказ создан. Подождите, скоро с вами свяжется представитель заведения")
+			else: await bot.send_message(callback_query.from_user.id,text=f"Возникла ошибка, заказ не создан")
 		else: 
 			code = AvailabilityRefCode(eventID, username)
 			share_keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Стать реферером", callback_data=f"forward_from_telegram={eventID}={code}"))
@@ -140,7 +140,6 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 			else: await bot.send_message(callback_query.from_user.id, text=f"Что-то пошло не так")
 		else:
 			await bot.send_message(callback_query.from_user.id, f"У вас уже есть промокод: {check_code}")
-	
 	if callback_query.data.startswith('forward_from'):
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		forward_from, event, user_code = callback_query.data.split('=')
