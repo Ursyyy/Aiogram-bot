@@ -7,6 +7,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 #time = 6
 #
 
+local = {}
+
 connector = mysql.connector.connect(
 	host="host",
 	user="user",
@@ -31,6 +33,24 @@ def GetSpreadsheetData(sheetName, worksheetIndex) -> list:
 		return lst
 	except:
 		pass#write_logs.error_logging("Ошибка чтения из Google Sheet")
+ 
+def GetLocalData(sheetName:str="Text_variables") -> dict:  
+	global local
+	sheet = client.open(sheetName).get_worksheet(0)	
+	langs = sheet.get_all_values()[0]
+	data = sheet.get_all_values()[1:]
+	for x in range(len(data)):
+		valiable_name = data[x][0]
+		append_data = {}
+		for y in range(1,len(data[x])):
+			append_data[langs[y]] = data[x][y]
+		local[valiable_name] = append_data
+
+def GetAllLanguages(sheetName:str="Text_variables") -> list:
+	sheet = client.open(sheetName).get_worksheet(0)	
+	return sheet.get_all_values()[0][1:]
+
+
 
 def RecreateEventsTable():
 	events_data = GetSpreadsheetData("PayForSay_Database", 0)

@@ -16,7 +16,7 @@ mydb = mysql.connector.connect(
 )
 
 HOW_MANY_SCROLLS = 10
-LANG = 'en'
+lang = 'en'
 
 cursor = mydb.cursor(buffered=True) 
 
@@ -26,9 +26,9 @@ def Categories() -> list:
 
 def GetFirstEvent(categoryName:str = "") -> list:
 	if categoryName == "":
-		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = enabled LIMIT %s", (HOW_MANY_SCROLLS,))
+		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' LIMIT %s", (HOW_MANY_SCROLLS,))
 	else:
-		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = enabled AND Category = %s LIMIT %s", (categoryName, HOW_MANY_SCROLLS))
+		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' AND Category = %s LIMIT %s", (categoryName, HOW_MANY_SCROLLS))
 	return cursor.fetchall()
 
 def CheckIsActive(eventID:int, username:str) -> bool:
@@ -44,16 +44,16 @@ def GetEventInfo(eventID:int) ->tuple:
 	
 def GetNextEvent(eventID:int, categoryName:str = "") ->list:
 	if categoryName == "":
-		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription FROM events WHERE eventStatus = enabled AND eventID > %s LIMIT %s", (eventID, HOW_MANY_SCROLLS))
+		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription FROM events WHERE eventStatus = 'enabled' AND eventID > %s LIMIT %s", (eventID, HOW_MANY_SCROLLS))
 	else:
-		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = enabled AND Category = %s and eventID > {eventID} LIMIT %s", (categoryName, HOW_MANY_SCROLLS))
+		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' AND Category = %s and eventID > {eventID} LIMIT %s", (categoryName, HOW_MANY_SCROLLS))
 	return cursor.fetchall()
 
 def GetPrevEvent(eventID:int, categoryName:str = "") ->list:
 	if categoryName == "":
-		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = enabled AND eventID < {eventID} LIMIT %s", (HOW_MANY_SCROLLS, ))
+		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' AND eventID < {eventID} LIMIT %s", (HOW_MANY_SCROLLS, ))
 	else:
-		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = enabled AND Category = %s and eventID < {eventID} LIMIT %s", (categoryName, HOW_MANY_SCROLLS))
+		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' AND Category = %s and eventID < {eventID} LIMIT %s", (categoryName, HOW_MANY_SCROLLS))
 	return cursor.fetchall()
 
 def MaxRefCode() -> int:
@@ -64,12 +64,21 @@ def MaxRefCode() -> int:
 	return codes[0][0]
 
 def GetEventInfo(eventID:int) -> tuple:
-	cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventID = %s", (eventID, ))
+	cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription, DetailDescription from events WHERE eventID = %s", (eventID, ))
 	return cursor.fetchone()
 
 def SelectRefCode(eventID: int, userTelUsername: str) -> int:
 	cursor.execute("SELECT userrefcode FROM refcodes WHERE eventID = %s AND userTelUsername = %s", (eventID, userTelUsername))
 	return cursor.fetchone()[0]
+
+def SelectAllRefCode(userTelUsername: str) -> list:
+	cursor.execute("SELECT userrefcode FROM refcodes WHERE userTelUsername = %s", (userTelUsername,))
+	ref_codes = []
+	res = cursor.fetchall()
+	for item in res:
+		ref_codes.append(item[0])
+	return ref_codes
+
 
 def AvailabilityRefCode(eventId: int, userTelUsername: int) -> int:
 	cursor.execute(f"SELECT userrefcode FROM refcodes WHERE eventID = %s AND userTelUsername = %s", (eventId, userTelUsername))
@@ -82,24 +91,24 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool
 	cursor.execute(f"SELECT * FROM refcodes WHERE userrefcode = {userRefCode}")
 	parent_user = cursor.fetchone()
 	if parent_user is None:
-		return locale.TEXT_INCORRECT_CODE[LANG]
+		return work_with_google.local['TEXT_INCORRECT_CODE'][lang]
 	cursor.execute("SELECT userrefcode FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userTelUsername, parent_user[0]))
 	is_correct = cursor.fetchone()
 	if not (is_correct is None):
-		return locale.TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE[LANG]
+		return local['TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE'][lang]
 	cursor.execute(f"SELECT MaxRefPerDay, MaxRefTotal FROM events WHERE eventID = {parent_user[0]}")
 	event = cursor.fetchone()
 	if parent_user[7] > event[1] and event[1] != 0:
-		return locale.TEXT_SHARED[LANG]
+		return work_with_google.local['TEXT_SHARED'][lang]
 	if parent_user[6] > event[0] and event[0] != 0:
-		return locale.TEXT_SHARED_TODAY[LANG]
+		return work_with_google.local['TEXT_SHARED_TODAY'][lang]
 	cursor.execute(f"SELECT recommendedFrom FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userTelUsername, parent_user[0]))
 	user = cursor.fetchone()
 	if user is None:
 		if backlink: refCode = InsertRefCode(parent_user[0], userTelUsername, shared_from=parent_user[1], refcodeStatus='active', MaxRefPerDay=1, MaxRefTotal=1, write=False)
 		else: refCode = InsertRefCode(parent_user[0], userTelUsername, write=False)
 		if refCode == -1:
-			return locale.TEXT_FAILED_TO_CREATE_CODE[LANG]
+			return work_with_google.local['TEXT_FAILED_TO_CREATE_CODE'][lang]
 		try:
 			command = f"UPDATE refcodes SET MaxRefTotal = {parent_user[6] + 1} , MaxRefPerDay = {parent_user[7] + 1}, refcodeStatus = 'active', recommendedFrom = '{userTelUsername}' WHERE userrefcode = { parent_user[2]}"
 			cursor.execute(command)
@@ -107,10 +116,10 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool
 			write = Thread(target=WriteLogs, args=[(parent_user[1], parent_user[0]), (userTelUsername, parent_user[0])])
 			write.start()
 		except mysql.connector.Error as error:
-			return locale.TEXT_CODE_ERROR[LANG]
+			return work_with_google.local['TEXT_CODE_ERROR'][lang]
 		
-		return f"{locale.TEXT_SUCCESSFUL_CREATE_CODE[LANG]} {refCode}"
-	return locale.TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE[LANG]
+		return f"{work_with_google.local['TEXT_SUCCESSFUL_CREATE_CODE'][lang]} {refCode}"
+	return work_with_google.local['TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE'][lang]
 
 def CreateOrder(eventID:int, userTelUsername:str, orderName:str) -> bool:
 	try:
