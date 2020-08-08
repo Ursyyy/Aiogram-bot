@@ -13,7 +13,8 @@ connector = mysql.connector.connect(
 	host="host",
 	user="user",
 	passwd="pasword",
-	database="database"
+	database="database",
+	charset="utf8mb4"
 )
 cursor = connector.cursor()
 

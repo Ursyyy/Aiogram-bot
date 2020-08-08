@@ -13,7 +13,7 @@ from bot import bot, dp
 from functions.work_with_google import WriteToSQL, local, GetLocalData, GetAllLanguages
 
 #
-#time = 12
+#time = 13
 #
 
 @dp.message_handler(commands=['start'])
@@ -36,6 +36,18 @@ async def cmd_start(message: types.Message):
 		await category_list(message)
 	else:
 		await message.answer("Smth wrong!")
+
+@dp.message_handler(commands=['changelang'])
+async def cmd_change_lang(message:types.Message):
+	global lang 
+	all_languages = GetAllLanguages()
+	msgSplit = message.text.split()
+	if len(msgSplit) == 1:
+		langs_text = ' '.join(all_languages)
+		await message.answer(f"Язык интерфейса: {lang}\nДоступные языки: {langs_text}\n/changelang 'язык' для смены")
+	if len(msgSplit) == 2 and msgSplit[1] in all_languages:
+		lang = msgSplit[1]
+		await message.answer(f"Язык был изменен на {lang}")
 
 @dp.message_handler(commands=['mypromocodes'])
 async def cmd_show_promocodes(message: types.Message):
@@ -104,6 +116,10 @@ async def events_list(message: types.Message, category:str = "all"):
 async def process_callback_btn(callback_query: types.CallbackQuery):
 	if callback_query.data.startswith('event_list'):
 		await category_list(callback_query.message)
+
+	if callback_query.data.startswith("delete_chat"):
+		text, post_id = callback_query.data.split('=')
+		await bot.send_message(chat_id=callback_query.message.chat.id,text=DeleteComments(post_id))
 
 	if callback_query.data == 'change_category':
 		await category_list(callback_query.message)
@@ -217,16 +233,18 @@ async def inline_echo(inline_query: InlineQuery):
 	text = inline_query.query or 0
 	username = inline_query.from_user.username
 	all_ref_codes = SelectAllRefCode(username)
-	if int(text) in all_ref_codes:
-		input_content = InputTextMessageContent(message_text=f"<a href='t.me/Ursyyy_bot?start={text}'>Перейти к боту </a>", parse_mode="HTML")
-	#else: input_content = InputTextMessageContent("Вы ввели неправильный промокод")
-		result_id: str = hashlib.md5(text.encode()).hexdigest()
-		item = InlineQueryResultArticle(
+	items = []
+	for item in all_ref_codes:
+		input_content = InputTextMessageContent(message_text=f"<a href='t.me/Ursyyy_bot?start={item[0]}'>Использовать промокод</a>", parse_mode="HTML")		
+		result_id: str = hashlib.md5(str(item[0]).encode()).hexdigest()
+		items.append(InlineQueryResultArticle(
 		id=result_id,
-		title=f'Поделиться промокодом {text!r}',
+		title=f'Поделиться промокодом {item[0]!r}',
+		description=f'Событие: {item[1]}',
 		input_message_content=input_content,
-		)
-		await bot.answer_inline_query(inline_query.id, results=[item], cache_time=1)
+		))
+
+	await bot.answer_inline_query(inline_query.id, results=items, cache_time=1)
 
 if __name__ == "__main__":
 	GetLocalData()

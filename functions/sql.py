@@ -12,7 +12,8 @@ mydb = mysql.connector.connect(
 	host="host",
 	user="user",
 	passwd="pasword",
-	database="database"
+	database="database",
+	charset="utf8mb4"
 )
 
 HOW_MANY_SCROLLS = 10
@@ -72,12 +73,13 @@ def SelectRefCode(eventID: int, userTelUsername: str) -> int:
 	return cursor.fetchone()[0]
 
 def SelectAllRefCode(userTelUsername: str) -> list:
-	cursor.execute("SELECT userrefcode FROM refcodes WHERE userTelUsername = %s", (userTelUsername,))
-	ref_codes = []
+	cursor.execute("SELECT userrefcode, eventID FROM refcodes WHERE userTelUsername = %s", (userTelUsername,))
+	ref_codes_and_Title = []
 	res = cursor.fetchall()
 	for item in res:
-		ref_codes.append(item[0])
-	return ref_codes
+		cursor.execute("SELECT Title FROM events WHERE eventID = %s",(item[1],))
+		ref_codes_and_Title.append((item[0], cursor.fetchone()[0]))
+	return ref_codes_and_Title
 
 
 def AvailabilityRefCode(eventId: int, userTelUsername: int) -> int:
@@ -95,7 +97,7 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool
 	cursor.execute("SELECT userrefcode FROM refcodes WHERE userTelUsername = %s AND eventID = %s", (userTelUsername, parent_user[0]))
 	is_correct = cursor.fetchone()
 	if not (is_correct is None):
-		return local['TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE'][lang]
+		return work_with_google.local['TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE'][lang]
 	cursor.execute(f"SELECT MaxRefPerDay, MaxRefTotal FROM events WHERE eventID = {parent_user[0]}")
 	event = cursor.fetchone()
 	if parent_user[7] > event[1] and event[1] != 0:
