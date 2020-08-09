@@ -84,11 +84,12 @@ async def Update_database(message: types.Message):
 
 @dp.message_handler(commands=['events', "event"])
 async def cmd_events(message: types.Message):
+	cat_list = Categories()
 	event_split = message.text.split()
 	if len(event_split) == 1:
 		await category_list(message)
-	elif len(event_split) == 2 and event_split[1].lower() == 'all':
-		await events_list(message)
+	elif len(event_split) == 2 and event_split[1].lower() in cat_list:
+		await events_list(message, event_split[1].lower())
 
 async def category_list(message: types.Message):
 	cat_list = Categories()

@@ -33,15 +33,29 @@ def CursorConnected() -> None:
 	)
 	cursor = mydb.cursor(buffered=True) 
 
-def Categories() -> list:
+def CursorConnected() -> None:
+	global mydb, cursor
 	if not mydb.is_connected():
-		CursorConnected()
+		mydb = mysql.connector.connect(
+			host="localhost",
+			user="root",
+			passwd="06al3x12B00",
+			database="test",
+			charset="utf8mb4"
+		)
+		cursor = mydb.cursor(buffered=True) 
+
+def Categories() -> list:
+	CursorConnected()
 	cursor.execute("SELECT categoryName FROM categories")
-	return cursor.fetchall()
+	categ_tuple = cursor.fetchall()
+	categories = []
+	for category in categ_tuple:
+		categories.append(category[0])
+	return categories
 
 def GetFirstEvent(categoryName:str = "") -> list:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	if categoryName == "":
 		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' LIMIT %s", (HOW_MANY_SCROLLS,))
 	else:
@@ -49,8 +63,7 @@ def GetFirstEvent(categoryName:str = "") -> list:
 	return cursor.fetchall()
 
 def CheckIsActive(eventID:int, username:str) -> bool:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute("SELECT refcodeStatus FROM refcodes WHERE eventID = %s AND userTelUsername = %s", (eventID, username))
 	res = cursor.fetchone()
 	if not(res is None):
@@ -58,14 +71,12 @@ def CheckIsActive(eventID:int, username:str) -> bool:
 	return True
 
 def GetEventInfo(eventID:int) ->tuple:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventID = %s",(eventID,))
 	return cursor.fetchone()
 	
 def GetNextEvent(eventID:int, categoryName:str = "") ->list:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	if categoryName == "":
 		cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription FROM events WHERE eventStatus = 'enabled' AND eventID > %s LIMIT %s", (eventID, HOW_MANY_SCROLLS))
 	else:
@@ -73,8 +84,7 @@ def GetNextEvent(eventID:int, categoryName:str = "") ->list:
 	return cursor.fetchall()
 
 def GetPrevEvent(eventID:int, categoryName:str = "") ->list:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	if categoryName == "":
 		cursor.execute(f"SELECT eventID, PictureURL, Title, ShortDescription from events WHERE eventStatus = 'enabled' AND eventID < {eventID} LIMIT %s", (HOW_MANY_SCROLLS, ))
 	else:
@@ -82,8 +92,7 @@ def GetPrevEvent(eventID:int, categoryName:str = "") ->list:
 	return cursor.fetchall()
 
 def MaxRefCode() -> int:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute(f"SELECT userrefcode FROM refcodes ORDER BY userrefcode DESC LIMIT 0,1")
 	codes = cursor.fetchall()
 	if codes == []:
@@ -91,20 +100,17 @@ def MaxRefCode() -> int:
 	return codes[0][0]
 
 def GetEventInfo(eventID:int) -> tuple:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute("SELECT eventID, PictureURL, Title, ShortDescription, DetailDescription from events WHERE eventID = %s", (eventID, ))
 	return cursor.fetchone()
 
 def SelectRefCode(eventID: int, userTelUsername: str) -> int:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute("SELECT userrefcode FROM refcodes WHERE eventID = %s AND userTelUsername = %s", (eventID, userTelUsername))
 	return cursor.fetchone()[0]
 
 def SelectAllRefCode(userTelUsername: str) -> list:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute("SELECT userrefcode, eventID FROM refcodes WHERE userTelUsername = %s", (userTelUsername,))
 	ref_codes_and_Title = []
 	res = cursor.fetchall()
@@ -115,8 +121,7 @@ def SelectAllRefCode(userTelUsername: str) -> list:
 
 
 def AvailabilityRefCode(eventId: int, userTelUsername: int) -> int:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute(f"SELECT userrefcode FROM refcodes WHERE eventID = %s AND userTelUsername = %s", (eventId, userTelUsername))
 	result = cursor.fetchall()
 	if result == []:
@@ -124,8 +129,7 @@ def AvailabilityRefCode(eventId: int, userTelUsername: int) -> int:
 	return result[0][0]
 
 def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool) -> str:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute(f"SELECT * FROM refcodes WHERE userrefcode = {userRefCode}")
 	parent_user = cursor.fetchone()
 	if parent_user is None:
@@ -160,8 +164,7 @@ def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool
 	return work_with_google.local['TEXT_YOU_ALREADY_HAVE_PROMOTIONAL_CODE'][lang]
 
 def CreateOrder(eventID:int, userTelUsername:str, orderName:str) -> bool:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	try:
 		cursor.execute("UPDATE refcodes SET orderStatus = 'active', orderName = %s WHERE userTelUsername = %s AND eventID = %s", (orderName, userTelUsername, eventID))
 		mydb.commit()
@@ -172,8 +175,7 @@ def CreateOrder(eventID:int, userTelUsername:str, orderName:str) -> bool:
 		return False
 
 def PromocodesList(userTelUsername: str) -> list:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute(f"SELECT eventID, userrefcode FROM refcodes WHERE userTelUsername = %s", (userTelUsername,))
 	all_event_by_username = cursor.fetchall()
 	result_list = []
@@ -184,8 +186,7 @@ def PromocodesList(userTelUsername: str) -> list:
 	return result_list
 
 def ActiveOrders(userTelUsername:str) -> list:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	cursor.execute("SELECT eventID, orderName FROM refcodes WHERE orderStatus = 'active' AND userTelUsername = %s",(userTelUsername, ))
 	orders = cursor.fetchall()
 	result = []
@@ -195,8 +196,7 @@ def ActiveOrders(userTelUsername:str) -> list:
 	return result
 
 def InsertRefCode(eventId: int, userTelUsername: str, refcodeStatus:str = 'inactive', shared_from:int = None, userSegments:str = "user", MaxRefTotal:int = 0, MaxRefPerDay:int = 0, write:bool = True ) -> int:
-	if not mydb.is_connected():
-		CursorConnected()
+	CursorConnected()
 	max_code = MaxRefCode()
 	if max_code == 0: refCode = randint(200,500)
 	else: refCode = max_code + randint(1, 10)

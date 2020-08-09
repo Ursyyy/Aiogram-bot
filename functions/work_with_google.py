@@ -21,6 +21,7 @@ cursor = connector.cursor()
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("your_file.json", scope)
 client = gspread.authorize(creds)
+
 def GetSpreadsheetData(sheetName, worksheetIndex) -> list:   
 	try: 
 		sheet = client.open(sheetName).get_worksheet(worksheetIndex)	
@@ -51,6 +52,17 @@ def GetAllLanguages(sheetName:str="Text_variables") -> list:
 	sheet = client.open(sheetName).get_worksheet(0)	
 	return sheet.get_all_values()[0][1:]
 
+def CursorConnected() -> None:
+	global connector, cursor
+	if not connector.is_connected():
+		connector = mysql.connector.connect(
+			host="localhost",
+			user="root",
+			passwd="06al3x12B00",
+			database="test",
+			charset="utf8mb4"
+		)
+		cursor = connector.cursor(buffered=True) 
 
 
 def RecreateEventsTable():
@@ -115,20 +127,11 @@ def RecreateCatTable():
 	cursor.execute("""create table categories (categoryName varchar(255))""")
 	
 	for data in cat_data:
-		cursor.execute(f"""INSERT INTO categories (categoryName) VALUES (%s)""", data)
+		cursor.execute(f"""INSERT INTO categories (categoryName) VALUES (%s)""", (str(data[0]).lower(),))
 	connector.commit()
+
 def WriteToSQL() -> str:
-	if not connector.is_connected():
-		global connector
-		global cursor
-		connector = mysql.connector.connect(
-			host="localhost",
-			user="root",
-			passwd="06al3x12B00",
-			database="test",
-			charset="utf8mb4"
-		)
-		cursor = connector.cursor()
+	CursorConnected()	
 	try:
 		RecreateEventsTable()
 		RecreateCompaniesTable()
