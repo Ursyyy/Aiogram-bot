@@ -118,7 +118,17 @@ def RecreateCatTable():
 		cursor.execute(f"""INSERT INTO categories (categoryName) VALUES (%s)""", data)
 	connector.commit()
 def WriteToSQL() -> str:
-	
+	if not connector.is_connected():
+		global connector
+		global cursor
+		connector = mysql.connector.connect(
+			host="localhost",
+			user="root",
+			passwd="06al3x12B00",
+			database="test",
+			charset="utf8mb4"
+		)
+		cursor = connector.cursor()
 	try:
 		RecreateEventsTable()
 		RecreateCompaniesTable()
