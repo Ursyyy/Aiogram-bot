@@ -1,4 +1,4 @@
-#Pay for say bot
+# Pay for say bot
 
 ## Установка python
 Для корректной работы работы бота необходимо установить python3.7 и несколько модулей с помощью pip 
@@ -18,7 +18,7 @@ sudo apt install python3-pip
 pip3 install aiogram mysql-connector gspread oauth2client
 ```
 
-##Настройка
+## Настройка
 В файле bot.py в переменную API_TOKEN записываем токен бота
 
 Бот использует Google API для работы с Google таблицами и Google диском. Соответственно, вам необходимо в [гугл косоли](https://console.cloud.google.com/home/dashboard) создать новый проект, включить ему Google Sheets API и Google Drive API и получить json файл. В файле будет строка с почтой "client_email": "<имя пользователя>@<имя проекта>.iam.gserviceaccount.com". На эту почту необходимо дать доступ к таблицам PayForSay_Database и logs как редактор. 
@@ -27,7 +27,7 @@ pip3 install aiogram mysql-connector gspread oauth2client
 
 В файле functions/sql.py перепенные host, user. passwd, database, charset отвечают за подключение к бд. Переменная HOW_MANY_SCROLLS отвечает за кол-во выводимых на экран событий(по-умолчанию равна 10).
 
-##Запуск
+## Запуск
 
 Переходим к настройке systemd. Для этого переходим в его директорию:
 ```bash
