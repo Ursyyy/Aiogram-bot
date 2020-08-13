@@ -12,8 +12,8 @@ local = {}
 
 host="localhost"
 user="root"
-passwd="06al3x12B00"
-database="test"
+passwd="passwd"
+database="db"
 charset="utf8mb4"
 
 DATABASE_TABLE = "PayForSay_Database"
