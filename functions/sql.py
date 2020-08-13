@@ -5,15 +5,21 @@ from . import work_with_google
 from . import get_telegram_user_info
 from time import sleep
 #
-#time = 9.5
+#time = 10
 #
 
+host="localhost"
+user="root"
+passwd="06al3x12B00"
+database="test"
+charset="utf8mb4"
+
 mydb = mysql.connector.connect(
-	host="host",
-	user="user",
-	passwd="pasword",
-	database="database",
-	charset="utf8mb4"
+	host=host,
+	user=user,
+	passwd=passwd,
+	database=database,
+	charset=charset
 )
 
 HOW_MANY_SCROLLS = 10
@@ -22,26 +28,14 @@ lang = 'en'
 cursor = mydb.cursor(buffered=True) 
 
 def CursorConnected() -> None:
-	global mydb
-	global cursor
-	mydb = mysql.connector.connect(
-		host="localhost",
-		user="root",
-		passwd="06al3x12B00",
-		database="test",
-		charset="utf8mb4"
-	)
-	cursor = mydb.cursor(buffered=True) 
-
-def CursorConnected() -> None:
 	global mydb, cursor
 	if not mydb.is_connected():
 		mydb = mysql.connector.connect(
-			host="localhost",
-			user="root",
-			passwd="06al3x12B00",
-			database="test",
-			charset="utf8mb4"
+			host=host,
+	  		user=user,
+			passwd=passwd,
+			database=database,
+			charset=charset
 		)
 		cursor = mydb.cursor(buffered=True) 
 
@@ -225,4 +219,3 @@ def WriteLogs(*args) -> None:
 		cursor.execute("SELECT Title FROM events WHERE eventID = %s", (eventID,))
 		eventTitle = cursor.fetchone()[0]
 		work_with_google.WriteRefCodesToSheets(refCode, userName, eventID, eventTitle, user_info[0], user_info[1], refcodePossibleToUse=ref_user[1], referalUsername=ref_user[0], orderStatus=ref_user[2], orderName=ref_user[3])
-
