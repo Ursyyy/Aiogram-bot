@@ -10,8 +10,8 @@ from time import sleep
 
 host="localhost"
 user="root"
-passwd="06al3x12B00"
-database="test"
+passwd="passwd"
+database="db"
 charset="utf8mb4"
 
 mydb = mysql.connector.connect(
