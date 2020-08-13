@@ -20,6 +20,8 @@ DATABASE_TABLE = "PayForSay_Database"
 LOGS_TABLE = "logs"
 ERROR_LOGS_TABLE = "error-logs"
 
+TEXT_VARIABLES = "Text_variables"
+
 PATH_TO_JSON_FILE = ""
 
 connector = mysql.connector.connect(
@@ -49,7 +51,7 @@ def GetSpreadsheetData(sheetName, worksheetIndex) -> list:
 	except:
 		pass#write_logs.error_logging("Ошибка чтения из Google Sheet")
  
-def GetLocalData(sheetName:str="Text_variables") -> dict:  
+def GetLocalData(sheetName:str=TEXT_VARIABLES) -> dict:  
 	global local
 	sheet = client.open(sheetName).get_worksheet(0)	
 	langs = sheet.get_all_values()[0]
@@ -61,7 +63,7 @@ def GetLocalData(sheetName:str="Text_variables") -> dict:
 			append_data[langs[y]] = data[x][y]
 		local[valiable_name] = append_data
 
-def GetAllLanguages(sheetName:str="Text_variables") -> list:
+def GetAllLanguages(sheetName:str=TEXT_VARIABLES) -> list:
 	sheet = client.open(sheetName).get_worksheet(0)	
 	return sheet.get_all_values()[0][1:]
 
