@@ -2,22 +2,26 @@
 #pip3/pip install aiogram mysql.connector gspread oauth2client telethon
 #
 from aiogram import executor
-import telethon
 from aiogram import types
 from aiogram.utils.deep_linking import get_start_link
+from aiogram.types import InlineQuery, \
+	InputTextMessageContent, InlineQueryResultArticle
 from json import dumps
+import hashlib
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from functions.locale import *
 from functions.sql import *
 from bot import bot, dp
 from functions.work_with_google import WriteToSQL, local, GetLocalData, GetAllLanguages
+from comments import SendComments, DeleteComments
 
 #
-#time = 13
+#time = 14
 #
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
+	lang = await GetUserLang(message.from_user.language_code)
 	await message.answer("<---   --->")
 	splitMsg = message.text.split()
 	if len(splitMsg) == 2:
@@ -37,10 +41,18 @@ async def cmd_start(message: types.Message):
 	else:
 		await message.answer("Smth wrong!")
 
+@dp.message_handler(commands=['chat'])
+async def cmd_lol(message:types.Message):
+	data = GetEventInfo(202007231338)
+	comment_link = SendComments(message.from_user.id, data)
+	if comment_link != {}:
+		keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Чат", url=comment_link['link']))
+		keyboard.add(types.InlineKeyboardButton(text="Закрыть заказ", callback_data=f"delete_chat={comment_link['id']}"))
+		await message.answer(text=f"Перейти в чат", reply_markup=keyboard)
+
 @dp.message_handler(commands=['changelang'])
 async def cmd_change_lang(message:types.Message):
-	global lang 
-	all_languages = GetAllLanguages()
+	all_languages = await GetAllLanguages()
 	msgSplit = message.text.split()
 	if len(msgSplit) == 1:
 		langs_text = ' '.join(all_languages)
@@ -55,6 +67,7 @@ async def cmd_show_promocodes(message: types.Message):
 	await send_active_order(message)
 
 async def send_promocodes(message: types.Message):
+	lang = await GetUserLang(message.from_user.language_code)
 	promocode_list = PromocodesList(message.from_user.username)
 	if promocode_list != []:
 		message_text = f"{local['TEXT_PROMOCODES'][lang]}\n"
@@ -66,6 +79,7 @@ async def send_promocodes(message: types.Message):
 		await message.answer(local['TEXT_NO_PROMOCODES'][lang], reply_markup=keyboard)
 
 async def send_active_order(message:types.Message):
+	lang = await GetUserLang(message.from_user.language_code)
 	active_orders = ActiveOrders(message.chat.username)
 	if active_orders != []:
 		await message.answer("<---   --->")
@@ -82,30 +96,39 @@ async def Update_database(message: types.Message):
 		thread = executor.submit(WriteToSQL)
 		await message.answer(thread.result())
 
+@dp.message_handler(commands=['updatelang'])
+async def Update_lang(message: types.Message):
+	await GetLocalData()
+	await message.answer("Язык был обновлен")
+
 @dp.message_handler(commands=['events', "event"])
 async def cmd_events(message: types.Message):
 	cat_list = Categories()
 	event_split = message.text.split()
 	if len(event_split) == 1:
 		await category_list(message)
+	elif len(event_split) == 2 and event_split[1].lower() == 'all':
+			await events_list(message)
 	elif len(event_split) == 2 and event_split[1].lower() in cat_list:
 		await events_list(message, event_split[1].lower())
 
-async def category_list(message: types.Message):
+async def category_list(message: types.Message, lang:str=''):
+	if lang == '': lang = await GetUserLang(message.from_user.language_code)
 	cat_list = Categories()
 	await message.answer("<---   --->")
 	category_keyboard= types.InlineKeyboardMarkup(row_width=3)
 	category_keyboard.add(types.InlineKeyboardButton(text="All", callback_data=f"category=all"))
 	for category in cat_list:
-		category_keyboard.row(types.InlineKeyboardButton(text=category[0].title(), callback_data=f"category={category[0]}"))
+		category_keyboard.row(types.InlineKeyboardButton(text=category.title(), callback_data=f"category={category}"))
 	await message.answer(text=local['TEXT_CHOOSE_CATEGORY'][lang], reply_markup=category_keyboard)
 
-async def events_list(message: types.Message, category:str = "all"):
+async def events_list(message: types.Message, category:str = "all", lang:str=""):
+	if lang == '': lang = await GetUserLang(message.from_user.language_code)
 	await message.answer("<---   --->")
 	if category == "all": eventsData = GetFirstEvent()
 	else: eventsData = GetFirstEvent(categoryName=category)
 	for data in eventsData:
-		await send_event_info(message, data, message.chat.username)
+		await send_event_info(message, data, message.chat.username, lang)
 	key1 = types.InlineKeyboardButton(text='➡', callback_data=f"➡={eventsData[0][0]}={eventsData[-1][0]}={category}")
 	key2 = types.InlineKeyboardButton(text='⬅', callback_data=f"⬅={eventsData[0][0]}={eventsData[-1][0]}={category}")
 	key3 = types.InlineKeyboardButton(text=local['BTN_TEXT_CHANGE_CATEGORY'][lang], callback_data="change_category")
@@ -116,20 +139,24 @@ async def events_list(message: types.Message, category:str = "all"):
 @dp.callback_query_handler(lambda c: c.data)
 async def process_callback_btn(callback_query: types.CallbackQuery):
 	if callback_query.data.startswith('event_list'):
-		await category_list(callback_query.message)
+		lang = await GetUserLang(callback_query.from_user.language_code)
+		await category_list(callback_query.message, lang=lang)
 
 	if callback_query.data.startswith("delete_chat"):
 		text, post_id = callback_query.data.split('=')
 		await bot.send_message(chat_id=callback_query.message.chat.id,text=DeleteComments(post_id))
 
 	if callback_query.data == 'change_category':
-		await category_list(callback_query.message)
+		lang = await GetUserLang(callback_query.from_user.language_code)
+		await category_list(callback_query.message, lang=lang)
 
 	if callback_query.data.startswith("category="):
 		text, category = callback_query.data.lower().split('=')
-		await events_list(callback_query.message, category=category)
+		lang = await GetUserLang(callback_query.from_user.language_code)
+		await events_list(callback_query.message, category=category, lang=lang)
 
 	if callback_query.data.startswith("activale_promo_event"):
+		lang = await GetUserLang(callback_query.from_user.language_code)
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		text, eventID, username = callback_query.data.lower().split('=')
 		if not CheckIsActive(eventID, username):
@@ -144,6 +171,7 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 			await bot.send_message(callback_query.from_user.id ,text=local['TEXT_PROMO_ONLY_FOR_EARNING'][lang], reply_markup=share_keyboard)
 
 	if callback_query.data.startswith('generate_from'):
+		lang = await GetUserLang(callback_query.from_user.language_code)
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		generate_from, event = callback_query.data.split('=')
 		username = callback_query.from_user.username
@@ -151,12 +179,14 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		if check_code == -1:
 			code = InsertRefCode(event, username)
 			eventInfo = GetEventInfo(event)
-			await update_event_info(callback_query.message.message_id, callback_query.message.chat.id, eventInfo, username)
+			await update_event_info(callback_query.message.message_id, callback_query.message.chat.id, eventInfo, username, lang)
 			if code != -1: await bot.send_message(callback_query.from_user.id, text=f"{local['TEXT_YOUR_CODE'][lang]} {code}")
 			else: await bot.send_message(callback_query.from_user.id, text=local['TEXT_YOUR_CODE_ERROR'][lang])
 		else:
 			await bot.send_message(callback_query.from_user.id, f"{local['TEXT_YOU_ALREADY_HAVE_CODE'][lang]} {check_code}")
+	
 	if callback_query.data.startswith('forward_from'):
+		lang = await GetUserLang(callback_query.from_user.language_code)
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		forward_from, event, user_code = callback_query.data.split('=')
 		if forward_from == 'forward_from_telegram':
@@ -167,6 +197,7 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 			await bot.send_message(callback_query.from_user.id, f"{local['TEXT_REF_LINK'][lang]}\n\n{link}")
 
 	if callback_query.data.startswith('my_purse'):
+		lang = await GetUserLang(callback_query.from_user.language_code)
 		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		back_to_events = types.InlineKeyboardMarkup()
 		back_button = types.InlineKeyboardButton(text=local['BTN_FIND_AND_EARN'][lang], callback_data="event_list")
@@ -174,6 +205,7 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		await bot.send_message(callback_query.from_user.id, text=local['TEXT_WALLET'][lang], reply_markup=back_to_events)
 
 	if callback_query.data.startswith('➡') or callback_query.data.startswith('⬅'):
+		lang = await GetUserLang(callback_query.from_user.language_code)
 		slide_to, eventID_1, eventID_2, category = callback_query.data.split('=')
 		if category == "all":
 			if slide_to == '➡':	eventsData = GetNextEvent(eventID_2)
@@ -184,7 +216,7 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		if eventsData != []:
 			chatID = callback_query.message.chat.id
 			for data in eventsData:
-				await send_event_info_from_callback(chatID, data, callback_query.from_user.username)
+				await send_event_info_from_callback(chatID, data, callback_query.from_user.username, lang)
 			key1 = types.InlineKeyboardButton(text='➡', callback_data=f"➡={eventsData[0][0]}={eventsData[-1][0]}={category}")
 			key2 = types.InlineKeyboardButton(text='⬅', callback_data=f"⬅={eventsData[0][0]}={eventsData[-1][0]}={category}")
 			key3 = types.InlineKeyboardButton(text=local['BTN_TEXT_CHANGE_CATEGORY'][lang], callback_data=f"change_category")
@@ -193,7 +225,7 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 			await bot.send_message(chatID, text=local['TEXT_CHANGE_PAGE'][lang], reply_markup=keyboard)
 		else: await bot.answer_callback_query(callback_query.id, text=local['TEXT_LAST_PAGE'][lang], show_alert=True)
 
-async def send_event_info(message: types.Message, eventInfo:list, username:str) -> int:
+async def send_event_info(message: types.Message, eventInfo:list, username:str, lang:str) -> int:
 	check_code = AvailabilityRefCode(eventInfo[0], username)
 	keyboard = types.InlineKeyboardMarkup()
 	if check_code == -1:
@@ -204,7 +236,7 @@ async def send_event_info(message: types.Message, eventInfo:list, username:str) 
 	keyboard.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
 	await message.answer_photo(photo=eventInfo[1], caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", reply_markup=keyboard, parse_mode="HTML")
 
-async def send_event_info_from_callback(chatID: int, eventInfo:list, username:str) -> int:
+async def send_event_info_from_callback(chatID: int, eventInfo:list, username:str, lang:str) -> int:
 	check_code = AvailabilityRefCode(eventInfo[0], username)
 	keyboard = types.InlineKeyboardMarkup()
 	if check_code == -1:
@@ -215,7 +247,7 @@ async def send_event_info_from_callback(chatID: int, eventInfo:list, username:st
 	keyboard.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
 	await bot.send_photo(chat_id= chatID ,photo=eventInfo[1], caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", reply_markup=keyboard, parse_mode="HTML")
 
-async def update_event_info(messageId:int, chatID:int, eventInfo:list, username:str):
+async def update_event_info(messageId:int, chatID:int, eventInfo:list, username:str, lang:str):
 	check_code = AvailabilityRefCode(eventInfo[0], username)
 	keyboard = types.InlineKeyboardMarkup()
 	if check_code == -1:
@@ -247,6 +279,12 @@ async def inline_echo(inline_query: InlineQuery):
 
 	await bot.answer_inline_query(inline_query.id, results=items, cache_time=1)
 
-if __name__ == "__main__":
-	GetLocalData()
-	executor.start_polling(dp, skip_updates=True)
+async def GetUserLang(lang:str):
+	all_languages = await GetAllLanguages()
+	if lang in all_languages: return lang
+	return 'en'
+
+
+asyncio.run(GetLocalData())
+
+executor.start_polling(dp, skip_updates=True)

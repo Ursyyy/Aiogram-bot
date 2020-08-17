@@ -2,34 +2,19 @@ import gspread
 import mysql.connector
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
-
+from .config import *
 #
-#time = 6
+#time = 7
 #
 
 local = {}
 
-
-host="localhost"
-user="root"
-passwd="passwd"
-database="db"
-charset="utf8mb4"
-
-DATABASE_TABLE = "PayForSay_Database"
-LOGS_TABLE = "logs"
-ERROR_LOGS_TABLE = "error-logs"
-
-TEXT_VARIABLES = "Text_variables"
-
-PATH_TO_JSON_FILE = ""
-
 connector = mysql.connector.connect(
-	host=host,
-	user=user,
-	passwd=passwd,
-	database=database,
-	charset=charset
+	host=HOST,
+	user=USER,
+	passwd=PASSWD,
+	database=DATABASE,
+	charset=CHARSET
 )
 
 cursor = connector.cursor()
@@ -37,6 +22,19 @@ cursor = connector.cursor()
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name(PATH_TO_JSON_FILE, scope)
 client = gspread.authorize(creds)
+
+def CursorConnected() -> None:
+	global connector, cursor
+	if not connector.is_connected():
+		connector = mysql.connector.connect(
+			host=HOST,
+			user=USER,
+			passwd=PASSWD,
+			database=DATABASE,
+			charset=CHARSET
+		)
+		cursor = connector.cursor(buffered=True) 
+
 def GetSpreadsheetData(sheetName, worksheetIndex) -> list:   
 	try: 
 		sheet = client.open(sheetName).get_worksheet(worksheetIndex)	

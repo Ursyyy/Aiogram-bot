@@ -1,29 +1,21 @@
 import mysql.connector
 from random import randint
 from threading import Thread
-from . import work_with_google
-from . import get_telegram_user_info
 from time import sleep
+from . import get_telegram_user_info
+from . import work_with_google
+from .config import *
 #
 #time = 10
-#
-
-host="localhost"
-user="root"
-passwd="passwd"
-database="db"
-charset="utf8mb4"
+#	
 
 mydb = mysql.connector.connect(
-	host=host,
-	user=user,
-	passwd=passwd,
-	database=database,
-	charset=charset
+	host=HOST,
+	user=USER,
+	passwd=PASSWD,
+	database=DATABASE,
+	charset=CHARSET
 )
-
-HOW_MANY_SCROLLS = 10
-lang = 'en'
 
 cursor = mydb.cursor(buffered=True) 
 
@@ -122,7 +114,7 @@ def AvailabilityRefCode(eventId: int, userTelUsername: int) -> int:
 		return -1
 	return result[0][0]
 
-def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool) -> str:
+def InsertUserFromRefCode(userTelUsername: str, userRefCode: int, backlink: bool, lang:str='en') -> str:
 	CursorConnected()
 	cursor.execute(f"SELECT * FROM refcodes WHERE userrefcode = {userRefCode}")
 	parent_user = cursor.fetchone()
@@ -219,3 +211,4 @@ def WriteLogs(*args) -> None:
 		cursor.execute("SELECT Title FROM events WHERE eventID = %s", (eventID,))
 		eventTitle = cursor.fetchone()[0]
 		work_with_google.WriteRefCodesToSheets(refCode, userName, eventID, eventTitle, user_info[0], user_info[1], refcodePossibleToUse=ref_user[1], referalUsername=ref_user[0], orderStatus=ref_user[2], orderName=ref_user[3])
+
