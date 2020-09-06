@@ -1,28 +1,22 @@
-#
-#pip3/pip install aiogram mysql.connector gspread oauth2client telethon
-#
 from aiogram import executor
 from aiogram import types
 from aiogram.utils.deep_linking import get_start_link
 from aiogram.types import InlineQuery, \
-	InputTextMessageContent, InlineQueryResultArticle
-from json import dumps
+	InputTextMessageContent, InlineQueryResultArticle, InlineQueryResultPhoto, InputMediaPhoto
+	
 import hashlib
 import asyncio
+from json import dumps
 from concurrent.futures import ThreadPoolExecutor
 from functions.sql import *
+from functions.config import SHARE_LINK
 from bot import bot, dp
 from functions.work_with_google import WriteToSQL, local, GetLocalData, GetAllLanguages
-from comments import SendComments, DeleteComments
-
-#
-#time = 14
-#
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
 	lang = await GetUserLang(message.from_user.language_code)
-	await message.answer("<---   --->")
+	menu_keyboard = await get_menu_keyboard(lang)
 	splitMsg = message.text.split()
 	if len(splitMsg) == 2:
 		backlink = False
@@ -32,69 +26,76 @@ async def cmd_start(message: types.Message):
 				backlink = True
 			else:
 				ref_code = int(splitMsg[1])
-			await message.answer(InsertUserFromRefCode(message.from_user.username, ref_code, backlink))
+			text = InsertUserFromRefCode(message.from_user.username, ref_code, backlink)
+			await message.answer(text, reply_markup=menu_keyboard)
+			eventInfo = GetInfoByPromo(ref_code)
+			await send_event_info(message, [eventInfo[3], eventInfo[1], eventInfo[0], eventInfo[2]], message.chat.username, lang)
 		except ValueError:
-			await message.answer(local['TEXT_CODE_ERROR'][lang])
+			await message.answer(local['TEXT_CODE_ERROR'][lang],reply_markup=menu_keyboard)
 	elif len(splitMsg) == 1:
-		await message.answer(local['TEXT_HELLO'][lang])
+		await message.answer(local['TEXT_HELLO'][lang],reply_markup=menu_keyboard)
 		await category_list(message)
 	else:
-		await message.answer("Smth wrong!")
-
-@dp.message_handler(commands=['chat'])
-async def cmd_lol(message:types.Message):
-	data = GetEventInfo(202007231338)
-	comment_link = SendComments(message.from_user.id, data)
-	if comment_link != {}:
-		keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text="Чат", url=comment_link['link']))
-		keyboard.add(types.InlineKeyboardButton(text="Закрыть заказ", callback_data=f"delete_chat={comment_link['id']}"))
-		await message.answer(text=f"Перейти в чат", reply_markup=keyboard)
+		await message.answer("Smth wrong!",reply_markup=menu_keyboard)
 
 @dp.message_handler(commands=['changelang'])
-async def cmd_change_lang(message:types.Message):
+async def cmd_change_lang(message:types.Message): 
 	all_languages = await GetAllLanguages()
 	msgSplit = message.text.split()
 	if len(msgSplit) == 1:
 		langs_text = ' '.join(all_languages)
-		await message.answer(f"Язык интерфейса: {lang}\nДоступные языки: {langs_text}\n/changelang 'язык' для смены")
+		await message.answer(f"Язык интерфейса: {lang}\n Доступные языки: {langs_text}\n/changelang 'язык' для смены")
 	if len(msgSplit) == 2 and msgSplit[1] in all_languages:
 		lang = msgSplit[1]
 		await message.answer(f"Язык был изменен на {lang}")
 
+@dp.message_handler(commands=['menu'])
+async def cmd_menu(message:types.Message):
+	lang = await GetUserLang(message.from_user.language_code)
+	menu_keyboard = await get_menu_keyboard(lang)
+	await message.answer(text=local['TEXT_FOR_MENU'][lang], reply_markup=menu_keyboard)
+
 @dp.message_handler(commands=['mypromocodes'])
 async def cmd_show_promocodes(message: types.Message):
 	await send_promocodes(message)
-	await send_active_order(message)
+	#await send_active_order(message)
 
 async def send_promocodes(message: types.Message):
-	lang = await GetUserLang(message.from_user.language_code)
-	promocode_list = PromocodesList(message.from_user.username)
+	lang = await GetUserLang(message.chat.username)
+	menu_keyboard = await get_menu_keyboard(lang)
+	promocode_list = PromocodesList(message.chat.username)
 	if promocode_list != []:
-		message_text = f"{local['TEXT_PROMOCODES'][lang]}\n"
+		await message.answer(f"{local['TEXT_PROMOCODES'][lang]}", reply_markup=menu_keyboard)
 		for data in promocode_list:
-			message_text += data[1] + " -- " + str(data[0]) +'\n'
-		await message.answer(message_text)
+			if data[-1] == -1:
+				keyboard =types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text=local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={data[0]}'))
+				await message.answer(local['TEXT_ENDDATE_EVENT_PROMOCODE'][lang].replace('{var}',str(data[0])), reply_markup=keyboard)
+			elif data[-1] == -2:
+				keyboard =types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text=local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={data[0]}'))
+				await message.answer(local['TEXT_STOP_EVENT_PROMOCODE'][lang].replace('{var}',str(data[0])), reply_markup=keyboard)
+			else:
+				keyboard = await get_promocodes_keyboard(lang, data[2], message.chat.username, data[0])
+				keyboard.add(types.InlineKeyboardButton(text=local['BTN_DETAILS'][lang], callback_data=f'details={data[0]}'))
+				await message.answer(f"{local['TEXT_YOUR_CODE'][lang]} {data[0]}\n{data[1]}", reply_markup=keyboard)
 	else: 
 		keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text=local['BTN_TEXT_FIND_CODE'][lang], callback_data="event_list"))
 		await message.answer(local['TEXT_NO_PROMOCODES'][lang], reply_markup=keyboard)
 
 async def send_active_order(message:types.Message):
-	lang = await GetUserLang(message.from_user.language_code)
+	lang = await GetUserLang(message.chat.username)
+	menu_keyboard = await get_menu_keyboard(lang)
 	active_orders = ActiveOrders(message.chat.username)
+	await message.answer(text=f"{local['TEXT_ACTIVE_ORDERS'][lang]}", reply_markup=menu_keyboard)
 	if active_orders != []:
-		await message.answer("<---   --->")
-		answer = f"{local['TEXT_ACTIVE_ORDERS'][lang]}\n"
 		for order in active_orders:
-			answer += f"{order[0]} -- {order[1]}\n"
-		await message.answer(text=answer)
+			keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text=local['BTN_CLOSE_ORDER'][lang], callback_data=f"close_order={order[1]}"))
+			await message.answer(text=local['TEXT_ORDER_KEY'][lang].replace('{title}', order[0]) + f'{order[1]}', reply_markup=keyboard)
+	else: await message.answer(local['TEXT_NO_ORDERS'][lang])
 
 @dp.message_handler(commands=['updatedb'])
 async def Update_database(message: types.Message):
-	await message.answer("<---   --->")
 	await message.answer(text="Подождите, идет обновление таблиц")
-	with ThreadPoolExecutor() as executor:
-		thread = executor.submit(WriteToSQL)
-		await message.answer(thread.result())
+	await message.answer(WriteToSQL())
 
 @dp.message_handler(commands=['updatelang'])
 async def Update_lang(message: types.Message):
@@ -112,19 +113,18 @@ async def cmd_events(message: types.Message):
 	elif len(event_split) == 2 and event_split[1].lower() in cat_list:
 		await events_list(message, event_split[1].lower())
 
+
 async def category_list(message: types.Message, lang:str=''):
 	if lang == '': lang = await GetUserLang(message.from_user.language_code)
 	cat_list = Categories()
-	await message.answer("<---   --->")
 	category_keyboard= types.InlineKeyboardMarkup(row_width=3)
-	category_keyboard.add(types.InlineKeyboardButton(text="All", callback_data=f"category=all"))
+	category_keyboard.add(types.InlineKeyboardButton(text=local['BTN_ALL_EVENTS'][lang], callback_data=f"category=all"))
 	for category in cat_list:
 		category_keyboard.row(types.InlineKeyboardButton(text=category.title(), callback_data=f"category={category}"))
 	await message.answer(text=local['TEXT_CHOOSE_CATEGORY'][lang], reply_markup=category_keyboard)
 
 async def events_list(message: types.Message, category:str = "all", lang:str=""):
 	if lang == '': lang = await GetUserLang(message.from_user.language_code)
-	await message.answer("<---   --->")
 	if category == "all": eventsData = GetFirstEvent()
 	else: eventsData = GetFirstEvent(categoryName=category)
 	for data in eventsData:
@@ -136,16 +136,21 @@ async def events_list(message: types.Message, category:str = "all", lang:str="")
 	slide_keyboard.row(key2, key3, key1)
 	await message.answer(text=local['TEXT_CHANGE_PAGE'][lang], reply_markup=slide_keyboard)
 
+
+@dp.message_handler(content_types=types.ContentTypes.TEXT)
+async def answer_to_menu(message: types.Message):
+	lang = await GetUserLang(message.from_user.language_code)
+	if message.text.lower() == local['MENU_TEXT_EVENT'][lang].lower(): await category_list(message)
+	elif message.text.lower() == local['MENU_TEXT_WALLET'][lang].lower(): await send_promocodes(message)
+	elif message.text.lower() == local['MENU_TEXT_ORDER'][lang].lower(): await send_active_order(message)
+
+
 @dp.callback_query_handler(lambda c: c.data)
 async def process_callback_btn(callback_query: types.CallbackQuery):
 	if callback_query.data.startswith('event_list'):
 		lang = await GetUserLang(callback_query.from_user.language_code)
 		await category_list(callback_query.message, lang=lang)
-
-	if callback_query.data.startswith("delete_chat"):
-		text, post_id = callback_query.data.split('=')
-		await bot.send_message(chat_id=callback_query.message.chat.id,text=DeleteComments(post_id))
-
+		
 	if callback_query.data == 'change_category':
 		lang = await GetUserLang(callback_query.from_user.language_code)
 		await category_list(callback_query.message, lang=lang)
@@ -155,24 +160,35 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 		lang = await GetUserLang(callback_query.from_user.language_code)
 		await events_list(callback_query.message, category=category, lang=lang)
 
-	if callback_query.data.startswith("activale_promo_event"):
+	if callback_query.data.startswith('details'):
 		lang = await GetUserLang(callback_query.from_user.language_code)
-		await bot.send_message(callback_query.from_user.id,text="<---   --->")
+		text, code = callback_query.data.split('=')
+		eventInfo = GetInfoByPromo(code)
+		await send_event_info(callback_query.message, [eventInfo[3], eventInfo[1], eventInfo[0], eventInfo[2]], callback_query.from_user.username, lang)
+
+	if callback_query.data.startswith("activate"):
+		lang = await GetUserLang(callback_query.from_user.language_code)
 		text, eventID, username = callback_query.data.lower().split('=')
 		if not CheckIsActive(eventID, username):
-			orderName = str(SelectRefCode(eventID, username))+"Order"
-			if CreateOrder(eventID, username, orderName):
-				await bot.send_message(callback_query.from_user.id,text=local['TEXT_CREATE_ORDER'][lang])
-			else: await bot.send_message(callback_query.from_user.id,text=local['TEXT_CREATE_ORDER_ERROR'][lang])
+			menu_keyboard = await get_menu_keyboard(lang)
+			checkOrder = CheckOrder(eventID, username)
+			if checkOrder == -1:
+				eventInfo = GetEventInfo(eventID)
+				eventText = f"\n\t{eventInfo[2]}\n{eventInfo[3]}"
+				orderKey = CreateOrder(eventID, username)
+				if orderKey != -1:
+					await bot.send_message(callback_query.from_user.id,text=local['TEXT_CREATE_ORDER'][lang].replace('{event}',eventText ).replace('{var}',str(orderKey)), reply_markup=menu_keyboard)
+				else: await bot.send_message(callback_query.from_user.id,text=local['TEXT_CREATE_ORDER_ERROR'][lang], reply_markup=menu_keyboard)
+			else: 
+				await bot.send_message(callback_query.from_user.id,text=local['TEXT_YOUR_ORDER_KEY'][lang]+f'{checkOrder}', reply_markup=menu_keyboard)
 		else: 
 			code = AvailabilityRefCode(eventID, username)
-			share_keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text=local['BTN_BECOME_REF'][lang], callback_data=f"forward_from_telegram={eventID}={code}"))
-			share_keyboard.add(types.InlineKeyboardButton(text=local['BTN_FIND_REF'][lang], callback_data=f"forward_from_backlink={eventID}={code}"))
-			await bot.send_message(callback_query.from_user.id ,text=local['TEXT_PROMO_ONLY_FOR_EARNING'][lang], reply_markup=share_keyboard)
+			share_keyboard = types.InlineKeyboardMarkup()
+			share_keyboard.add(types.InlineKeyboardButton(text=local['BTN_FIND_REF'][lang], callback_data=f"forward_from={eventID}={code}back"))
+			await bot.send_message(callback_query.from_user.id ,text=local['TEXT_PROMO_ONLY_FOR_EARNING'][lang].replace('{var}', str(code)), reply_markup=share_keyboard)
 
 	if callback_query.data.startswith('generate_from'):
 		lang = await GetUserLang(callback_query.from_user.language_code)
-		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		generate_from, event = callback_query.data.split('=')
 		username = callback_query.from_user.username
 		check_code = AvailabilityRefCode(event, username)
@@ -180,29 +196,45 @@ async def process_callback_btn(callback_query: types.CallbackQuery):
 			code = InsertRefCode(event, username)
 			eventInfo = GetEventInfo(event)
 			await update_event_info(callback_query.message.message_id, callback_query.message.chat.id, eventInfo, username, lang)
-			if code != -1: await bot.send_message(callback_query.from_user.id, text=f"{local['TEXT_YOUR_CODE'][lang]} {code}")
-			else: await bot.send_message(callback_query.from_user.id, text=local['TEXT_YOUR_CODE_ERROR'][lang])
+			if code != -1: message_text=f"{local['TEXT_SUCCES_REG_CODE'][lang]}\n\n\t{eventInfo[2]}\n{eventInfo[3]}\n\n{local['TEXT_YOUR_CODE'][lang]} {code}"
+			else: message_text=local['TEXT_YOUR_CODE_ERROR'][lang]
 		else:
-			await bot.send_message(callback_query.from_user.id, f"{local['TEXT_YOU_ALREADY_HAVE_CODE'][lang]} {check_code}")
+			message_text = f"{local['TEXT_YOU_ALREADY_HAVE_CODE'][lang]} {check_code}"
+		keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activate={event}={username}"))
+		keyboard.add(types.InlineKeyboardButton(text=local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from={event}={code}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={code}'))
+		await bot.send_message(callback_query.from_user.id, text=message_text, reply_markup=keyboard)
 	
 	if callback_query.data.startswith('forward_from'):
 		lang = await GetUserLang(callback_query.from_user.language_code)
-		await bot.send_message(callback_query.from_user.id,text="<---   --->")
 		forward_from, event, user_code = callback_query.data.split('=')
-		if forward_from == 'forward_from_telegram':
-			link = f"t.me/Ursyyy_bot?start={user_code}"#await forward_link_to_telegram(user_code)
-			await bot.send_message(callback_query.from_user.id, f"{local['TEXT_REF_LINK'][lang]}\n\n{link}")
-		if forward_from == "forward_from_backlink":
-			link = f"t.me/Ursyyy_bot?start={user_code}back"
-			await bot.send_message(callback_query.from_user.id, f"{local['TEXT_REF_LINK'][lang]}\n\n{link}")
+		if user_code.endswith('back'):
+			code = user_code[:-4]
+			text = local['TEXT_REF_BACKLINK'][lang]
+		else: 
+			code = user_code
+			text = local['TEXT_REF_LINK'][lang]
+		eventInfo = GetInfoByPromo(code)
+		link = f"{SHARE_LINK}{user_code}"
+		text = text.replace('{var}', code).replace('{event}', eventInfo[0]) + link
+		keyboard = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text=local['BTN_TEXT_FORWARD_FROM_TG'][lang], switch_inline_query=user_code))
+		await bot.send_message(callback_query.from_user.id, text, reply_markup=keyboard)
+
+	if callback_query.data.startswith('delete_code'):
+		text, code = callback_query.data.split('=')
+		lang = await GetUserLang(callback_query.from_user.language_code)
+		menu_keyboard = await get_menu_keyboard(lang)
+		await bot.send_message(callback_query.from_user.id,text=ClosePromocode(code), reply_markup=menu_keyboard)
+
+	if callback_query.data.startswith('close_order'):
+		lang = await GetUserLang(callback_query.from_user.language_code)
+		menu_keyboard = await get_menu_keyboard(lang)
+		text, orderKey = callback_query.data.split('=')
+		CloseOrder(orderKey)
+		await bot.send_message(callback_query.message.chat.id, text=local['TEXT_CLOSE_ORDER'][lang].replace('{var}', orderKey), reply_markup=menu_keyboard)
 
 	if callback_query.data.startswith('my_purse'):
-		lang = await GetUserLang(callback_query.from_user.language_code)
-		await bot.send_message(callback_query.from_user.id,text="<---   --->")
-		back_to_events = types.InlineKeyboardMarkup()
-		back_button = types.InlineKeyboardButton(text=local['BTN_FIND_AND_EARN'][lang], callback_data="event_list")
-		back_to_events.add(back_button)
-		await bot.send_message(callback_query.from_user.id, text=local['TEXT_WALLET'][lang], reply_markup=back_to_events)
+		await cmd_show_promocodes(callback_query.message)
 
 	if callback_query.data.startswith('➡') or callback_query.data.startswith('⬅'):
 		lang = await GetUserLang(callback_query.from_user.language_code)
@@ -231,9 +263,11 @@ async def send_event_info(message: types.Message, eventInfo:list, username:str, 
 	if check_code == -1:
 		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_GET_CODE'][lang], callback_data=f"generate_from_event={eventInfo[0]}"))
 	else: 
-		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activale_promo_event={eventInfo[0]}={username}"))
-		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from_telegram={eventInfo[0]}={check_code}"))
-	keyboard.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activate={eventInfo[0]}={username}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from={eventInfo[0]}={check_code}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={check_code}'))
+
+	#.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
 	await message.answer_photo(photo=eventInfo[1], caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", reply_markup=keyboard, parse_mode="HTML")
 
 async def send_event_info_from_callback(chatID: int, eventInfo:list, username:str, lang:str) -> int:
@@ -242,9 +276,10 @@ async def send_event_info_from_callback(chatID: int, eventInfo:list, username:st
 	if check_code == -1:
 		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_GET_CODE'][lang], callback_data=f"generate_from_event={eventInfo[0]}"))
 	else: 
-		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activale_promo_event={eventInfo[0]}={username}"))
-		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from_telegram={eventInfo[0]}={check_code}"))
-	keyboard.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activate={eventInfo[0]}={username}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from={eventInfo[0]}={check_code}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={check_code}'))
+	#keyboard.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
 	await bot.send_photo(chat_id= chatID ,photo=eventInfo[1], caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", reply_markup=keyboard, parse_mode="HTML")
 
 async def update_event_info(messageId:int, chatID:int, eventInfo:list, username:str, lang:str):
@@ -253,37 +288,65 @@ async def update_event_info(messageId:int, chatID:int, eventInfo:list, username:
 	if check_code == -1:
 		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_GET_CODE'][lang], callback_data=f"generate_from_event={eventInfo[0]}"))
 	else: 
-		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activale_promo_event={eventInfo[0]}={username}"))
-		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from_telegram={eventInfo[0]}={check_code}"))
-	keyboard.add(types.InlineKeyboardButton(local['BTN_MY_WALLET'][lang], callback_data=f"my_purse={username}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activate={eventInfo[0]}={username}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from={eventInfo[0]}={check_code}"))
+		keyboard.add(types.InlineKeyboardButton(local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={check_code}'))
 	media_file =dumps({"type":"photo","media": eventInfo[1]})
 	await bot.edit_message_media(media=media_file, chat_id=chatID, message_id=messageId)
 	await bot.edit_message_caption(chat_id=chatID ,caption=f"<b>{eventInfo[2]}</b>\n\n{eventInfo[3]}", message_id=messageId, reply_markup=keyboard,  parse_mode="HTML")
 
+async def get_menu_keyboard(lang:str):
+	menu_keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False, selective=True)
+	menu_keyboard.add(types.KeyboardButton(local['MENU_TEXT_EVENT'][lang]),types.KeyboardButton(local['MENU_TEXT_WALLET'][lang]),types.KeyboardButton(local['MENU_TEXT_ORDER'][lang]))
+	return menu_keyboard
+
+async def get_promocodes_keyboard(lang:str, eventID: int, username:str, code: int):
+	keyboard = types.InlineKeyboardMarkup()
+	keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_USE_CODE'][lang], callback_data=f"activate={eventID}={username}"))
+	keyboard.add(types.InlineKeyboardButton(local['BTN_TEXT_SHARE_EARN'][lang], callback_data=f"forward_from={eventID}={code}"))
+	keyboard.add(types.InlineKeyboardButton(local['BTN_DELETE_PROMOCODE'][lang], callback_data=f'delete_code={code}'))
+	return keyboard
 
 @dp.inline_handler()
 async def inline_echo(inline_query: InlineQuery):
-	text = inline_query.query or 0
+	text = inline_query.query or ''
 	username = inline_query.from_user.username
-	all_ref_codes = SelectAllRefCode(username)
+	events_with_ref_code = SelectAllRefCode(username)
 	items = []
-	for item in all_ref_codes:
-		input_content = InputTextMessageContent(message_text=f"<a href='t.me/Ursyyy_bot?start={item[0]}'>Использовать промокод</a>", parse_mode="HTML")		
-		result_id: str = hashlib.md5(str(item[0]).encode()).hexdigest()
-		items.append(InlineQueryResultArticle(
-		id=result_id,
-		title=f'Поделиться промокодом {item[0]!r}',
-		description=f'Событие: {item[1]}',
-		input_message_content=input_content,
-		))
-
+	for item in events_with_ref_code:
+		if text == '' or text == ' ':
+			eventInfo = GetInfoByPromo(item[0])
+			result_id: str = hashlib.md5(str(item[0]).encode()).hexdigest()
+			if str(item[0]).endswith('back'): text = f"{local['TEXT_SHARE_BY_TG_BACK']['ru'] }\n\n{eventInfo[0]}\n{eventInfo[2]}\n\n{local['TEXT_SHARE_BY_TG_LINK']['ru']}\n<a href='{SHARE_LINK}{item[0]}back'>Использовать промокод</a>"
+			else: text = f"{local['TEXT_SHARE_BY_TG']['ru']}\n\n{eventInfo[0]}\n{eventInfo[2]}\n\n{local['TEXT_SHARE_BY_TG_LINK']['ru']}\n<a href='{SHARE_LINK}{item[0]}'>Использовать промокод</a>" 		
+			input_content = InputTextMessageContent(message_text=text, parse_mode="HTML")		
+			items.append(InlineQueryResultArticle(
+					id=result_id,
+					thumb_url=eventInfo[1],
+					description=f'Событие: {item[1]}',
+					input_message_content=input_content,
+					title=f'Промокод: {item[0]}',
+				))		
+		else:
+			if str(item[0]).startswith(text[:3]):
+				eventInfo = GetInfoByPromo(item[0])
+				result_id: str = hashlib.md5(str(item[0]).encode()).hexdigest()
+				if text.endswith('back'): text = f"{local['TEXT_SHARE_BY_TG_BACK']['ru'] }\n\n{eventInfo[0]}\n{eventInfo[2]}\n\n{local['TEXT_SHARE_BY_TG_LINK']['ru']}\n<a href='{SHARE_LINK}{item[0]}back'>Использовать промокод</a>"
+				else: text = f"{local['TEXT_SHARE_BY_TG']['ru']}\n\n{eventInfo[0]}\n{eventInfo[2]}\n\n{local['TEXT_SHARE_BY_TG_LINK']['ru']}\n<a href='{SHARE_LINK}{item[0]}'>Использовать промокод</a>" 		
+				input_content = InputTextMessageContent(message_text=text, parse_mode="HTML")		
+				items.append(InlineQueryResultArticle(
+					id=result_id,
+					thumb_url=eventInfo[1],
+					description=f'Событие: {item[1]}',
+					input_message_content=input_content,
+					title=f'Промокод: {item[0]}',
+				))	
 	await bot.answer_inline_query(inline_query.id, results=items, cache_time=1)
 
 async def GetUserLang(lang:str):
-	all_languages = await GetAllLanguages()
-	if lang in all_languages: return lang
-	return 'en'
-
+	#all_languages = await GetAllLanguages()
+	#if lang in all_languages: return lang
+	return 'ru'
 
 asyncio.run(GetLocalData())
 
